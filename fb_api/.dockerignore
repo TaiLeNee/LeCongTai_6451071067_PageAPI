@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/.idea/
+**/.git/
+**/.gitignore
+**/*.user
+**/*.suo
+**/*.nupkg
+**/TestResults/
+tests/bin/
+tests/obj/
+prometheus_data/
+postgres_data/
+kafka_data/

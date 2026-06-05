@@ -1,6 +1,0 @@
-@LeCongTai_6451071067_PageAPI_HostAddress = http://localhost:5010
-
-GET {{LeCongTai_6451071067_PageAPI_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

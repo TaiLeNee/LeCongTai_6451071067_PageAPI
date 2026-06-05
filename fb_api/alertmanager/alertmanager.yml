@@ -1,0 +1,23 @@
+global:
+  resolve_timeout: 5m
+route:
+  receiver: 'slack'
+  group_by: ['alertname']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: 'slack'
+    slack_configs:
+      - send_resolved: true
+        channel: '#alerts'
+        api_url: 'http://localhost/placeholder-slack-webhook'
+        title: '{{ .GroupLabels.alertname }}'
+        text: '{{ range .Alerts }}{{ .Annotations.summary }}
+{{ .Annotations.description }}{{ end }}'
+inhibit_rules:
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    equal: ['alertname']

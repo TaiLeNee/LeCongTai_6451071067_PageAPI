@@ -1,0 +1,29 @@
+groups:
+  - name: fb_api_alerts
+    rules:
+      - alert: DeadLetterOffsetIncrease
+        expr: increase(kafka_topic_partition_current_offset{topic="dead_letter"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Dead letter queue has new messages"
+          description: "{{ $value }} new message(s) in dead_letter topic in the last 5 minutes"
+
+      - alert: ConsumerLagHigh
+        expr: kafka_consumer_group_lag{consumer_group=~"core-service-group|backend-api-group|retry-service-group"} > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Consumer {{ $labels.consumer_group }} lag is {{ $value }}"
+          description: "Consumer group {{ $labels.consumer_group }} on topic {{ $labels.topic }} has lag > 10000"
+
+      - alert: WebhookSilence
+        expr: increase(kafka_topic_partition_current_offset{topic="raw_events"}[10m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No new raw_events in 10 minutes"
+          description: "webhook-service may be down or Facebook is not sending events"
