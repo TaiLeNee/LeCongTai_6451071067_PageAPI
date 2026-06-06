@@ -102,12 +102,29 @@ public class ReplyCommandWorker : BackgroundService
             return;
         }
 
-        var isFirst = await _idempotencyRepository.TryInsertAsync(
+        var isNewCommand = await _commandStatusRepository.TryInsertAsync(
+            command.CommandId, command.EventId, command.CorrelationId, command.Action, "pending");
+
+        if (!isNewCommand)
+        {
+            var existingStatus = await _commandStatusRepository.GetStatusAsync(command.CommandId);
+            _logger.LogInformation(
+                "Skipping duplicate command {CommandId}; command already has status {Status}",
+                command.CommandId, existingStatus ?? "unknown");
+            return;
+        }
+
+        var isNewIdempotencyKey = await _idempotencyRepository.TryInsertAsync(
             command.IdempotencyKey, command.CommandId, command.Action, "pending");
 
-        if (!isFirst)
+        if (!isNewIdempotencyKey)
         {
             var existingStatus = await _idempotencyRepository.GetStatusAsync(command.IdempotencyKey);
+            await _commandStatusRepository.UpdateStatusAsync(
+                command.CommandId,
+                "duplicate",
+                errorMessage: $"Idempotency key {command.IdempotencyKey} already has status {existingStatus ?? "unknown"}");
+
             _logger.LogInformation(
                 "Skipping duplicate command {CommandId}; idempotency key {IdempotencyKey} already has status {Status}",
                 command.CommandId, command.IdempotencyKey, existingStatus ?? "unknown");
@@ -115,9 +132,6 @@ public class ReplyCommandWorker : BackgroundService
         }
 
         await _idempotencyRepository.UpdateStatusAsync(command.IdempotencyKey, "processing");
-
-        await _commandStatusRepository.InsertAsync(
-            command.CommandId, command.EventId, command.CorrelationId, command.Action, "processing");
 
         await _commandStatusRepository.UpdateStatusAsync(command.CommandId, "processing");
 

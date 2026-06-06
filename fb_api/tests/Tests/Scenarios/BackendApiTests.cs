@@ -34,6 +34,14 @@ public class BackendApiTests
         _errorHandlerMock = new Mock<IFacebookApiErrorHandler>();
         _sendFailedPublisherMock = new Mock<ISendFailedPublisher>();
         _loggerMock = new Mock<ILogger<ReplyCommandWorker>>();
+
+        _commandStatusRepoMock.Setup(x => x.TryInsertAsync(
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>(),
+                It.IsAny<string>()))
+            .ReturnsAsync(true);
     }
 
     private static ReplyCommand MakeCommand(
@@ -65,14 +73,23 @@ public class BackendApiTests
     {
         var result = new BackendProcessingResult();
 
-        // Idempotency check
-        var isFirst = await _idempotencyRepoMock.Object.TryInsertAsync(
+        var isNewCommand = await _commandStatusRepoMock.Object.TryInsertAsync(
+            command.CommandId, command.EventId, command.CorrelationId, command.Action, "pending");
+
+        if (!isNewCommand)
+        {
+            result.IsDuplicateCommand = true;
+            result.ExistingStatus = await _commandStatusRepoMock.Object.GetStatusAsync(command.CommandId);
+            return result;
+        }
+
+        var isNewIdempotencyKey = await _idempotencyRepoMock.Object.TryInsertAsync(
             command.IdempotencyKey, command.CommandId, command.Action, "pending");
 
-        if (!isFirst)
+        if (!isNewIdempotencyKey)
         {
             var existingStatus = await _idempotencyRepoMock.Object.GetStatusAsync(command.IdempotencyKey);
-            result.IsDuplicate = true;
+            result.IsDuplicateIdempotencyKey = true;
             result.ExistingStatus = existingStatus;
             return result;
         }
@@ -154,7 +171,8 @@ public class BackendApiTests
         var result = await SimulateProcessingAsync(command);
 
         result.IsFirst.Should().BeTrue();
-        result.IsDuplicate.Should().BeFalse();
+        result.IsDuplicateIdempotencyKey.Should().BeFalse();
+        result.IsDuplicateCommand.Should().BeFalse();
         result.ActionCompleted.Should().BeTrue();
     }
 
@@ -185,11 +203,39 @@ public class BackendApiTests
 
         var result = await SimulateProcessingAsync(command);
 
-        result.IsDuplicate.Should().BeTrue();
+        result.IsDuplicateIdempotencyKey.Should().BeTrue();
         result.ExistingStatus.Should().Be("completed");
         _facebookActionMock.Verify(
             x => x.SendAutoReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Never, "duplicate should not trigger Facebook action");
+    }
+
+    [Fact]
+    public async Task DuplicateCommandId_PreventsDuplicateProcessing()
+    {
+        var command = MakeCommand();
+        _commandStatusRepoMock.Setup(x => x.TryInsertAsync(
+                command.CommandId,
+                command.EventId,
+                command.CorrelationId,
+                command.Action,
+                "pending"))
+            .ReturnsAsync(false);
+        _commandStatusRepoMock.Setup(x => x.GetStatusAsync(command.CommandId))
+            .ReturnsAsync("processing");
+
+        var result = await SimulateProcessingAsync(command);
+
+        result.IsDuplicateCommand.Should().BeTrue();
+        result.ExistingStatus.Should().Be("processing");
+        _idempotencyRepoMock.Verify(
+            x => x.TryInsertAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never,
+            "duplicate command_id should be skipped before creating another idempotency row");
+        _facebookActionMock.Verify(
+            x => x.SendAutoReplyAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
+            Times.Never,
+            "duplicate command_id should not trigger Facebook action");
     }
 
     [Fact]
@@ -252,7 +298,7 @@ public class BackendApiTests
 
         var result = await SimulateProcessingAsync(command);
 
-        result.IsDuplicate.Should().BeTrue();
+        result.IsDuplicateIdempotencyKey.Should().BeTrue();
         result.ExistingStatus.Should().Be("pending");
         // In the real worker, pending status means the previous attempt may have failed
         // and should be retried (not skipped like "completed")
@@ -261,7 +307,8 @@ public class BackendApiTests
     private class BackendProcessingResult
     {
         public bool IsFirst { get; set; }
-        public bool IsDuplicate { get; set; }
+        public bool IsDuplicateCommand { get; set; }
+        public bool IsDuplicateIdempotencyKey { get; set; }
         public string? ExistingStatus { get; set; }
         public bool ActionCompleted { get; set; }
         public string? ErrorMessage { get; set; }

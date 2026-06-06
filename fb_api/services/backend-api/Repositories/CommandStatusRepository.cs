@@ -7,6 +7,7 @@ namespace FbApi.BackendApi.Repositories;
 public interface ICommandStatusRepository
 {
     Task InsertAsync(string commandId, string eventId, string correlationId, string action, string status = "pending");
+    Task<bool> TryInsertAsync(string commandId, string eventId, string correlationId, string action, string status = "pending");
     Task UpdateStatusAsync(string commandId, string status, string? facebookResponse = null, string? errorMessage = null);
     Task<int> IncrementRetryCountAsync(string commandId);
     Task<string?> GetStatusAsync(string commandId);
@@ -24,13 +25,19 @@ public class CommandStatusRepository : ICommandStatusRepository
 
     public async Task InsertAsync(string commandId, string eventId, string correlationId, string action, string status = "pending")
     {
+        await TryInsertAsync(commandId, eventId, correlationId, action, status);
+    }
+
+    public async Task<bool> TryInsertAsync(string commandId, string eventId, string correlationId, string action, string status = "pending")
+    {
         await using var connection = new NpgsqlConnection(_connectionString);
         const string sql = @"
             INSERT INTO command_status (command_id, event_id, correlation_id, action, status, created_at, updated_at)
             VALUES (@CommandId, @EventId, @CorrelationId, @Action, @Status, NOW(), NOW())
-            ON CONFLICT (command_id) DO NOTHING";
+            ON CONFLICT (command_id) DO NOTHING
+            RETURNING 1";
 
-        await connection.ExecuteAsync(sql, new
+        var inserted = await connection.QuerySingleOrDefaultAsync<int?>(sql, new
         {
             CommandId = commandId,
             EventId = eventId,
@@ -38,6 +45,8 @@ public class CommandStatusRepository : ICommandStatusRepository
             Action = action,
             Status = status
         });
+
+        return inserted.HasValue;
     }
 
     public async Task UpdateStatusAsync(string commandId, string status, string? facebookResponse = null, string? errorMessage = null)
