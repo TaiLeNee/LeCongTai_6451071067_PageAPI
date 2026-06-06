@@ -1,25 +1,6 @@
 # Facebook Page API Practice
 
 Hệ thống API phân tán dùng để quản lý Facebook Page, nhận webhook từ Facebook, xử lý bình luận theo thời gian thực, phân tích nội dung bằng AI và tự động tạo lệnh phản hồi qua Facebook Graph API.
-
-Yêu cầu bài thực hành gốc nằm tại `Docs/Bai_tap_Thuc_hanh.md`.
-
-## Mục lục
-
-- [Tổng quan](#tổng-quan)
-- [Công nghệ sử dụng](#công-nghệ-sử-dụng)
-- [Kiến trúc hệ thống](#kiến-trúc-hệ-thống)
-- [Cấu trúc thư mục](#cấu-trúc-thư-mục)
-- [Yêu cầu cài đặt](#yêu-cầu-cài-đặt)
-- [Cấu hình môi trường](#cấu-hình-môi-trường)
-- [Chạy hệ thống](#chạy-hệ-thống)
-- [Endpoint chính](#endpoint-chính)
-- [Kafka topic](#kafka-topic)
-- [Cơ sở dữ liệu](#cơ-sở-dữ-liệu)
-- [Kiểm thử](#kiểm-thử)
-- [Giám sát](#giám-sát)
-- [Dừng hệ thống](#dừng-hệ-thống)
-
 ## Tổng quan
 
 Dự án triển khai một hệ thống microservice cho bài thực hành Lập trình API. Luồng xử lý chính:
